@@ -110,4 +110,5 @@ Packet sniffing capability maps to:
 ## Author
 Fredrick Agufenwa
 GitHub: [Phredreeq](https://github.com/Phredreeq)
+
 LinkedIn: [fredrick-agufenwa-09bab9165](https://linkedin.com/in/fredrick-agufenwa-09bab9165)
