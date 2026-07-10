@@ -49,12 +49,13 @@ Flags observed in this project: `S` (SYN), `SA` (SYN-ACK), `A` (ACK), `PA` (PSH-
 ### 1. TCP Three-Way Handshake + TLS Negotiation (HTTPS)
 Captured a full HTTPS connection: SYN → SYN-ACK → ACK, followed by TLS handshake data (garbled, since TLS handshake messages are binary-formatted, not plaintext):
 ```
-[+] 192.168.10.100 -> 150.171.22.17 | Flags: S
-[+] 150.171.22.17 -> 192.168.10.100 | Flags: SA
-[+] 192.168.10.100 -> 150.171.22.17 | Flags: A
-[+] 192.168.10.100 -> 150.171.22.17 | Flags: PA
-    Payload (bytes): [garbled — TLS handshake data]
+[+] 192.168.10.102 -> 185.15.58.224 | Flags: S
+[+] 185.15.58.224 -> 192.168.10.102 | Flags: SA
+[+] 192.168.10.102 -> 185.15.58.224 | Flags: A
+[+] 192.168.10.102 -> 185.15.58.224 | Flags: PA
+    Payload (text): [garbled — TLS handshake data]
 ```
+![TCP Handshake and TLS](screenshots/01_tcp_handshake_tls.png)
 
 ### 2. Plaintext HTTP (deliberate test using neverssl.com)
 Generated with `curl http://neverssl.com` to guarantee unencrypted traffic:
@@ -69,34 +70,38 @@ Generated with `curl http://neverssl.com` to guarantee unencrypted traffic:
     Server: Apache/2.4.66 ()
 ```
 Connection closed gracefully with a four-way FIN exchange: `FA` → `A` → `FA` → `A`.
+![Plaintext HTTP Request and Response](screenshots/02_plaintext_http_request.png)
 
 ### 3. Clean DNS Query/Response (UDP)
 ```
-[+] 192.168.10.102 -> 192.168.10.1 | Protocol: UDP | Port: 54510 -> 53
-[+] 192.168.10.1 -> 192.168.10.102 | Protocol: UDP | Port: 53 -> 54510
+[+] 192.168.10.102 -> 192.168.10.1 | Protocol: UDP | Port: 43922 -> 53
+[+] 192.168.10.1 -> 192.168.10.102 | Protocol: UDP | Port: 53 -> 43922
 ```
 No handshake — confirms UDP's connectionless, "fire and forget" behavior versus TCP's connection-oriented handshake.
+
+![DNS Query and Response](screenshots/03_dns_query_response.png)
 
 ### 4. Real-World Diagnostic Finding
 The sniffer also surfaced a live issue in my own homelab: repeated, unanswered SYN packets from a Windows VM to my Ubuntu/Splunk server on port 9997 (Splunk Universal Forwarder port):
 ```
-[+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50040 -> 9997 | Flags: S
-[+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50041 -> 9997 | Flags: S
-[+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50056 -> 9997 | Flags: S
+[+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50497 -> 9997 | Flags: S
+[+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50497 -> 9997 | Flags: S
+[+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50497 -> 9997 | Flags: S
 ```
 No SYN-ACK or RST ever returned, which confirmed that the Splunk service on the Ubuntu server was not running. This is an example signature of "port not listening" vs. "port actively refused" (which would show a fast SYN → RST-ACK exchange instead).
 
+![Unanswered SYN to Splunk Fowarder Port](screenshots/04_unanswered_syn_splunk_port.png)
+
 ## Understanding the Results
-- **Encrypted (HTTPS/TLS) payloads appear as garbled bytes** — this is TLS working correctly. Even with raw byte access, the actual content is unreadable without the session keys.
-- **Plaintext (HTTP) payloads are fully readable** — demonstrating exactly why HTTPS adoption matters: anyone sniffing unencrypted traffic can read the full request and response.
-- **Unanswered SYNs are a diagnostic signal**, not just noise — a repeated SYN with no reply indicates the destination service isn't listening, distinct from an actively refused connection (SYN → RST).
+- **Encrypted (HTTPS/TLS) payloads appear as garbled bytes** — this shows that TLS is working correctly. Even with raw byte access, the actual content is unreadable without the session keys.
+- **Plaintext (HTTP) payloads are fully readable** This desmostrates why HTTPS adoption matters: anyone sniffing unencrypted traffic can read the full request and response.
+- **Unanswered SYNs are a diagnostic signal**, a repeated SYN with no reply indicates the destination service isn't listening, distinct from an actively refused connection (SYN → RST).
 
 ## Key Learnings (Debugging Journey)
 Getting a stable capture running wasn't immediate, and the troubleshooting process was itself a valuable exercise in systematic debugging:
 - **Promiscuous Mode**: The VirtualBox internal network adapter needed Promiscuous Mode set to "Allow All" before the interface would see traffic beyond what was addressed directly to the VM.
-- **Socket instability**: Scapy's default libpcap-based socket intermittently failed with a vague error on this environment. ...Comparing against `tcpdump` (which worked reliably) helped isolate that the issue was Scapy-specific rather than an OS/permissions problem... Forcing `conf.use_pcap = False` (raw AF_PACKET sockets) resolved it.
-- **A misleading error message**: The error `Socket failed with 'sc'. It was closed.` gave almost no detail. Wrapping the `sniff()` call in a `try/except` block with `traceback.print_exc()` was necessary to reveal the real underlying exception.
-- **A real typo bug**: A misspelled keyword argument (`timwout` instead of `timeout`) caused a `TypeError` that was only visible once full tracebacks were captured, which reminded me that vague symptoms are often simple mistakes once you get the full error text instead of a truncated one.
+- **Socket instability**: Scapy's default libpcap-based socket intermittently failed with an error (`Socket failed with 'sc'. It was closed.`) on my kali linux environment. Forcing `conf.use_pcap = False` (raw AF_PACKET sockets) resolved it.
+- **A real typo bug**: A misspelled keyword argument (`timwout` instead of `timeout`) caused a `TypeError` which was only visible once full tracebacks were captured. This reminded me that vague symptoms are often simple mistakes once you get the full error text instead of a truncated one.
 
 ## MITRE ATT&CK Mapping
 Packet sniffing capability maps to:
