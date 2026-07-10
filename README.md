@@ -102,10 +102,6 @@ Getting a stable capture running wasn't immediate, and the troubleshooting proce
 Packet sniffing capability maps to:
 - **T1040 — Network Sniffing** (Discovery / Credential Access): adversaries use sniffing to capture network traffic, potentially exposing credentials or session data sent in cleartext.
 
-## References
-- Scapy documentation: https://scapy.readthedocs.io
-- IANA Protocol Numbers registry
-- RFC 793 — Transmission Control Protocol
 
 ## Author
 Fredrick Agufenwa
