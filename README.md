@@ -12,10 +12,10 @@ This project is a Python-based network packet sniffer built using Scapy. It capt
 Every network conversation (eg loading a page or an app checking for updates) is broken into small units called packets. Being able to observe these packets is foundational to network monitoring, incident investigation, and threat detection, which is how analysts spot suspicious connections, unencrypted sensitive data, or abnormal traffic patterns.
 
 ### Why Root Privileges Are Required
-Operating systems restrict raw packet access by default — an application normally only sees traffic addressed to it. Capturing *all* traffic on an interface requires bypassing this restriction (raw sockets / promiscuous mode), which is why the OS requires elevated (root) privileges to run this script. This is also why sniffers are a "dual-use" tool: the same capability used defensively (traffic monitoring) can be used offensively (credential interception on unencrypted traffic).
+I tried running the progam(without the root privilege), it brought up an error message saying "PermissionError: [Errno 1] Operation not permitted". This made me realize that operating systems restrict raw packet access by default, because an application normally only sees traffic addressed to it. Capturing *all* traffic on an interface requires bypassing this restriction (raw sockets / promiscuous mode), which is why the OS requires elevated (root) privileges to run this script. This is also why sniffers are a "dual-use" tool: the same capability used defensively (traffic monitoring) can be used offensively (credential interception on unencrypted traffic).
 
 ### Protocol Numbers
-Protocol numbers in the IP header (e.g. `6` = TCP, `17` = UDP, `1` = ICMP) are standardized globally by IANA (Internet Assigned Numbers Authority), not arbitrary — every OS's network stack fills in these exact values.
+Protocol numbers in the IP header (e.g. `6` = TCP, `17` = UDP, `1` = ICMP) are standardized globally by IANA (Internet Assigned Numbers Authority), not arbitrary.
 
 ### TCP Flags and the Handshake
 TCP is a connection-oriented protocol. Before real data flows, both sides perform a three-way handshake:
@@ -84,19 +84,19 @@ The sniffer also surfaced a live issue in my own homelab: repeated, unanswered S
 [+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50041 -> 9997 | Flags: S
 [+] 192.168.10.100 -> 192.168.20.101 | TCP Port: 50056 -> 9997 | Flags: S
 ```
-No SYN-ACK or RST ever returned — confirmed the Splunk service on the Ubuntu server was stopped. This is a textbook signature of "port not listening" vs. "port actively refused" (which would show a fast SYN → RST-ACK exchange instead).
+No SYN-ACK or RST ever returned, which confirmed that the Splunk service on the Ubuntu server was not running. This is an example signature of "port not listening" vs. "port actively refused" (which would show a fast SYN → RST-ACK exchange instead).
 
 ## Understanding the Results
-- **Encrypted (HTTPS/TLS) payloads appear as garbled bytes** — this is TLS working correctly, not a tool limitation. Even with raw byte access, the actual content is unreadable without the session keys.
+- **Encrypted (HTTPS/TLS) payloads appear as garbled bytes** — this is TLS working correctly. Even with raw byte access, the actual content is unreadable without the session keys.
 - **Plaintext (HTTP) payloads are fully readable** — demonstrating exactly why HTTPS adoption matters: anyone sniffing unencrypted traffic can read the full request and response.
 - **Unanswered SYNs are a diagnostic signal**, not just noise — a repeated SYN with no reply indicates the destination service isn't listening, distinct from an actively refused connection (SYN → RST).
 
 ## Key Learnings (Debugging Journey)
 Getting a stable capture running wasn't immediate, and the troubleshooting process was itself a valuable exercise in systematic debugging:
 - **Promiscuous Mode**: The VirtualBox internal network adapter needed Promiscuous Mode set to "Allow All" before the interface would see traffic beyond what was addressed directly to the VM.
-- **Socket instability**: Scapy's default libpcap-based socket intermittently failed with a vague error on this environment. Comparing against `tcpdump` (which worked reliably) helped isolate that the issue was Scapy-specific rather than an OS/permissions problem. Forcing `conf.use_pcap = False` (raw AF_PACKET sockets) resolved it.
+- **Socket instability**: Scapy's default libpcap-based socket intermittently failed with a vague error on this environment. ...Comparing against `tcpdump` (which worked reliably) helped isolate that the issue was Scapy-specific rather than an OS/permissions problem... Forcing `conf.use_pcap = False` (raw AF_PACKET sockets) resolved it.
 - **A misleading error message**: The error `Socket failed with 'sc'. It was closed.` gave almost no detail. Wrapping the `sniff()` call in a `try/except` block with `traceback.print_exc()` was necessary to reveal the real underlying exception.
-- **A real typo bug**: A misspelled keyword argument (`timwout` instead of `timeout`) caused a `TypeError` that was only visible once full tracebacks were captured — a reminder that vague symptoms are often simple mistakes once you get the full error text instead of a truncated one.
+- **A real typo bug**: A misspelled keyword argument (`timwout` instead of `timeout`) caused a `TypeError` that was only visible once full tracebacks were captured, which reminded me that vague symptoms are often simple mistakes once you get the full error text instead of a truncated one.
 
 ## MITRE ATT&CK Mapping
 Packet sniffing capability maps to:
